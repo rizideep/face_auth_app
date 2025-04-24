@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
+import 'package:faceauth/server_url.dart';
 import 'package:faceauth/util.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,28 +11,21 @@ import 'package:http/http.dart';
 import 'package:lottie/lottie.dart';
 import 'package:path/path.dart';
 
-class FaceDetectionScreen extends StatefulWidget {
-  final String url;
-
-  const FaceDetectionScreen(this.url, {super.key});
+class Authentication extends StatefulWidget {
+  const Authentication({super.key});
 
   @override
-  FaceDetectionScreenState createState() => FaceDetectionScreenState();
+  AuthenticationState createState() => AuthenticationState();
 }
 
-class FaceDetectionScreenState extends State<FaceDetectionScreen> {
+class AuthenticationState extends State<Authentication> {
   CameraController? _controller;
 
   bool isProcessing = false;
   int blinkCount = 0; // To count the blinks
-
   late List<CameraDescription> cameras;
-
   bool isFrontCamera = true; // Track the camera type (front or back)
   late FaceDetector _faceDetector;
-
-  var _responseMessage;
-
   int openToCloseFrames = 0; // Frames between eye opening and closing
   int closeToOpenFrames = 0; // Frames between eye closing and opening
   bool isLeftEyeOpenInInitialFrame = false;
@@ -60,17 +54,18 @@ class FaceDetectionScreenState extends State<FaceDetectionScreen> {
       cameras = await availableCameras();
 
       CameraDescription selectedCamera = cameraDescription ??
-          cameras.firstWhere((camera) => camera.lensDirection == CameraLensDirection.front,);
+          cameras.firstWhere(
+            (camera) => camera.lensDirection == CameraLensDirection.front,
+          );
 
       _controller = CameraController(selectedCamera, ResolutionPreset.high);
       await _controller?.initialize();
 
-        _controller?.startImageStream((CameraImage image) async {
-          if (!isProcessing) {
-            await detectFaces(image);
-          }
-        });
-
+      _controller?.startImageStream((CameraImage image) async {
+        if (!isProcessing) {
+          await detectFaces(image);
+        }
+      });
     } catch (e) {
       MyUtil.showToast("Error initializing camera: $e");
       if (kDebugMode) {
@@ -108,7 +103,9 @@ class FaceDetectionScreenState extends State<FaceDetectionScreen> {
         if (mounted) {
           MyUtil.showToast("Error in face detection: $error");
         }
-        print("Face detection error: $error");
+        if (kDebugMode) {
+          print("Face detection error: $error");
+        }
       } finally {
         setState(() {
           isProcessing = false;
@@ -123,12 +120,10 @@ class FaceDetectionScreenState extends State<FaceDetectionScreen> {
       allBytes.putUint8List(plane.bytes);
     }
     final bytes = allBytes.done().buffer.asUint8List();
-
     final Size imageSize =
         Size(image.width.toDouble(), image.height.toDouble());
     final InputImageRotation imageRotation =
         _rotationIntToImageRotation(_controller!.description.sensorOrientation);
-
     final inputImageData = InputImageMetadata(
       size: imageSize,
       rotation: imageRotation,
@@ -154,7 +149,7 @@ class FaceDetectionScreenState extends State<FaceDetectionScreen> {
 
   Future<void> _authentications(File imageFile) async {
     var request = MultipartRequest(
-        'POST', Uri.parse('http://192.168.1.9:8000/authenticate/'));
+        'POST', Uri.parse(ServerUrl.baseUrl + ServerUrl.authenticate));
     var stream = ByteStream(imageFile.openRead());
     var length = await imageFile.length();
     var multipartFile = MultipartFile('image', stream, length,
@@ -167,9 +162,7 @@ class FaceDetectionScreenState extends State<FaceDetectionScreen> {
         var responseData = await response.stream.bytesToString();
         var jsonResponse = jsonDecode(responseData);
         var responseDataa = await Response.fromStream(response);
-        setState(() {
-          _responseMessage = responseDataa.body;
-        });
+        setState(() {});
         if (kDebugMode) {
           print('Success: ${jsonResponse['message']}');
         }
@@ -207,6 +200,7 @@ class FaceDetectionScreenState extends State<FaceDetectionScreen> {
       body: _controller == null || !_controller!.value.isInitialized
           ? const Center(child: CircularProgressIndicator())
           : Stack(
+              alignment: AlignmentDirectional.topCenter,
               children: [
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -226,31 +220,33 @@ class FaceDetectionScreenState extends State<FaceDetectionScreen> {
                   },
                 ),
                 // Lottie Animation Overlay
-                Positioned.fill(
-                  child: Lottie.asset(
-                    'assets/lottie_file/face_animation.json',
-                    fit: BoxFit.contain,
-                    repeat: true, // Ensure the animation keeps repeating
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 120.0),
-                  child: Align(
-                    alignment: Alignment.bottomCenter,
-                    child: ElevatedButton(
-                      onPressed: _resetDetection,
-                      child: const Text('Reset'),
+                Align(
+                  alignment: Alignment.center,
+                  child: Container(
+                    child: Lottie.asset(
+                      'assets/lottie_file/face_animation.json',
+                      fit: BoxFit.contain,
+
+                      repeat: true, // Ensure the animation keeps repeating
                     ),
                   ),
                 ),
-
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 60.0),
+                  padding: const EdgeInsets.only(bottom: 100.0),
                   child: Align(
                     alignment: Alignment.bottomCenter,
-                    child: ElevatedButton(
-                      onPressed: _toggleCamera,
-                      child: const Text('Toggle'),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton(
+                          onPressed: _resetDetection,
+                          child: const Text('Reset'),
+                        ),
+                        ElevatedButton(
+                          onPressed: _toggleCamera,
+                          child: const Text('Toggle'),
+                        ),
+                      ],
                     ),
                   ),
                 ),
